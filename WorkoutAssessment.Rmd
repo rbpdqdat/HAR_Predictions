@@ -1,0 +1,101 @@
+---
+title: "WorkoutAssessment"
+author: "Russ Bigley"
+date: "10/27/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Human Activity Recognition
+
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  There are 5 classes in the dataset.  'Classe A' is the only set that the subject performed the lift correctly.  The other classes are classifications of incorrect lifts. More info can be found at http://groupware.les.inf.puc-rio.br/har .
+
+#Synopsis
+The data did have a lot of missing values, or many observations that were not deamed useful due to the time series, or the lack of recording anything other than zero.  The training set was used in a cross-validation procedure. The random decision forest classification model was used to predict the outcome of the cross-validated set with an ending accuracy of approximately 0.9.  The test procedure used produced output at the bottom of the report.
+
+```{r echo=TRUE}
+library(ggplot2)
+library(caret)
+library(ElemStatLearn)
+#read in the elements and change the 'missing' or 'null' values to the appropriate 'r' value of 'NA'.
+training = read.csv("~/Library/Mobile\ Documents/com~apple~CloudDocs/CourseraDataScience/8_MachineLearning/pml-training.csv", na.strings=c("NA","NaN","#DIV/0!", ""))
+testing = read.csv("~/Library/Mobile\ Documents/com~apple~CloudDocs/CourseraDataScience/8_MachineLearning/pml-testing.csv", na.strings=c("NA","NaN","#DIV/0!", ""))
+```
+
+```{r echo=TRUE, eval=FALSE}
+head(training)
+#predicted variable will be class
+dim(training)
+```
+
+There are 159 variables and the 'classe' predictand.  There are 19622 observations.  There are features in the dataset that are not likely to be useful. Code was used to look look at the number of 'NA' values.
+
+```{r echo=TRUE, eval=FALSE}
+apply(training, 2, function(x) return(sum(is.na(x))==0))
+```
+
+The data contained a lot of missing data.  The following will remove all of the columns that have 10% or more missing.
+
+```{r echo=TRUE}
+train_rm_na <- training[ lapply( training, function(x) sum(is.na(x)) / length(training[,1]) ) < 0.1 ]
+dim(train_rm_na)
+head(train_rm_na)
+```
+
+This removed 100 parameters that would not add any value to the data because a mojority of the data not useable. The first 6 columns were also removed from the data.  The name was not going to be used as a predictor.  The timestamps may add additional value if the current prediction models do not work well, and may need to be refactored into the modeling process, but for now they will be removed.
+
+```{r echo=TRUE}
+train_rm_na_modified <- train_rm_na[,-(1:6)]
+dim(train_rm_na_modified)
+```
+
+Now there are 54 remaining columns.  53 predictor variables and the 'classe' reponse.  There are still 19622 samples remaining.  So, there are enough data to divide the samples into an additional training/test set for cross validation.
+
+The remaining variables in the training set need to be matched in the testing set.  So the following code takes the column headers from the training set and matches them to the test set and removes all other columns.
+
+```{r echo=TRUE}
+testing <- testing[, names(testing) %in% names(train_rm_na_modified)]
+```
+
+Now the training set is subsetted for cross-validation.
+
+```{r echo=TRUE}
+# will need to split the training set up for cross-validation
+trainSubset  <- createDataPartition(y=train_rm_na_modified$classe,
+                               p=0.7,list=FALSE)
+
+subTrain <- train_rm_na_modified[trainSubset,]
+subTrain_test <- train_rm_na_modified[-trainSubset,]
+```
+
+Literature suggests that the best method to apply is the random forecest technique.  
+
+```{r echo=TRUE}
+require(randomForest)
+#This is a baseline using the default parameters of the random forest method
+modFit <- train(classe ~.,data=subTrain,method="rf",ntree=500,tuneGrid=data.frame(.mtry=3))
+print(modFit)
+modFit$final
+plot(modFit$final)
+```
+
+The plot suggests that less than 100 trees are needed to achieve near optimal accuracy.  If the test were run many times the trees could be reduced to optimize computer run-time.
+
+```{r echo=TRUE}
+#using the subset of the training set to test the model fit 
+prediction <- predict(modFit$final,subTrain_test)
+
+confusionMatrix(subTrain_test$classe,prediction)
+```
+
+Finally, using the model to predict the output using the original test set.
+
+```{r echo=TRUE}
+postResample(prediction,subTrain_test$classe)
+predictfinalTest <- predict(modFit,testing)
+predictfinalTest
+```
+
+
